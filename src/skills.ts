@@ -62,13 +62,30 @@ export async function parseSkillMd(
   }
 }
 
+/**
+ * Maps an array of fileNames over a `stat` call.
+ * This is preferable over
+ * `readDir(dir, {withFileTypes: true})`
+ * as it follows through symlinks to their targets.
+ */
+async function mapStats(fileNames: string[], parentDir: string) {
+  return Promise.all(
+    fileNames.map(async (fileName) => {
+      const stats = await stat(join(parentDir, fileName));
+      return Object.assign(stats, { name: fileName });
+    })
+  );
+}
+
 async function findSkillDirs(dir: string, depth = 0, maxDepth = 5): Promise<string[]> {
   if (depth > maxDepth) return [];
 
   try {
     const [hasSkill, entries] = await Promise.all([
       hasSkillMd(dir),
-      readdir(dir, { withFileTypes: true }).catch(() => []),
+      readdir(dir)
+        .then((fileNames) => mapStats(fileNames, dir))
+        .catch(() => []),
     ]);
 
     const currentDir = hasSkill ? [dir] : [];
@@ -188,7 +205,7 @@ export async function discoverSkills(
 
   for (const dir of prioritySearchDirs) {
     try {
-      const entries = await readdir(dir, { withFileTypes: true });
+      const entries = await readdir(dir).then((fileNames) => mapStats(fileNames, dir));
 
       for (const entry of entries) {
         if (entry.isDirectory()) {
